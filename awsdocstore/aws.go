@@ -161,12 +161,6 @@ func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.R
 	timestamp := time.Now()
 
 	// Increment the LatestRevision attribute.
-	/*
-		update := expression.Set(
-			expression.Name("LatestRevision"),
-			expression.Name("LatestRevision").Plus(expression.Value(1)),
-		)
-	*/
 	update := expression.Add(
 		expression.Name("LatestRevision"),
 		expression.Value(1),
@@ -269,4 +263,45 @@ func (ds *AwsDocStore) ListDocs(token string) (page docstore.DocPage, err error)
 	page.Docs = docs
 	return
 
+}
+
+func (ds *AwsDocStore) ListRevisions(docId string, token string) (page docstore.RevisionPage, err error) {
+
+	keyCond := expression.Key("DocId").Equal(expression.Value(docId))
+	proj := expression.NamesList(
+		expression.Name("Id"),
+		expression.Name("Timestamp"),
+	)
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(keyCond).
+		WithProjection(proj).
+		Build()
+
+	if err != nil {
+		return
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+	}
+
+	queryInput.SetTableName(ds.revisionTable)
+
+	resp, err := ds.ddb.Query(queryInput)
+	if err != nil {
+		return
+	}
+
+	var revisions []docstore.RevisionMetadata
+
+	err = dynamodbattribute.UnmarshalListOfMaps(resp.Items, &revisions)
+	if err != nil {
+		return
+	}
+
+	page.Revisions = revisions
+	return
 }
