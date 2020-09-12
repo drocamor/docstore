@@ -1,0 +1,1 @@
+docstore is a package that stores revisioned documents. 
