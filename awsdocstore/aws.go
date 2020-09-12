@@ -21,18 +21,18 @@ type AwsDocStore struct {
 type AwsDocStoreOption func(*AwsDocStore)
 
 type AwsRevision struct {
-	DocId, Id, PreviousRevision string
-	Timestamp                   time.Time
-	Body                        []byte
-	reader                      *bytes.Reader
+	DocId     string
+	Id        int
+	Timestamp time.Time
+	Body      []byte
+	reader    *bytes.Reader
 }
 
 func (r *AwsRevision) Metadata() docstore.RevisionMetadata {
 	return docstore.RevisionMetadata{
-		DocId:            r.DocId,
-		Id:               r.Id,
-		PreviousRevision: r.PreviousRevision,
-		Timestamp:        r.Timestamp,
+		DocId:     r.DocId,
+		Id:        r.Id,
+		Timestamp: r.Timestamp,
 	}
 }
 
@@ -109,12 +109,19 @@ func (ds *AwsDocStore) GetDoc(docId string) (rev docstore.Revision, err error) {
 
 }
 
-func (ds *AwsDocStore) GetRevision(docId, revisionId string) (rev docstore.Revision, err error) {
+func (ds *AwsDocStore) GetRevision(docId string, revisionId int) (rev docstore.Revision, err error) {
 	// TODO - validate that the doc actually exists first
 
 	// Make the key
 
-	revKey := struct{ Id, DocId string }{Id: revisionId, DocId: docId}
+	revKey := struct {
+		Id    int
+		DocId string
+	}{
+		Id:    revisionId,
+		DocId: docId,
+	}
+
 	revKeyAv, err := dynamodbattribute.MarshalMap(revKey)
 	if err != nil {
 		return
@@ -151,12 +158,18 @@ func (ds *AwsDocStore) GetRevision(docId, revisionId string) (rev docstore.Revis
 func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.Revision, err error) {
 
 	// Create a new revision ID
-	timestamp, revId := docstore.GenerateRevisionId()
+	timestamp := time.Now()
 
-	// Create the update expression to set the latest revision to the new revision.
-	update := expression.Set(
+	// Increment the LatestRevision attribute.
+	/*
+		update := expression.Set(
+			expression.Name("LatestRevision"),
+			expression.Name("LatestRevision").Plus(expression.Value(1)),
+		)
+	*/
+	update := expression.Add(
 		expression.Name("LatestRevision"),
-		expression.Value(revId),
+		expression.Value(1),
 	)
 
 	expr, err := expression.NewBuilder().
@@ -174,10 +187,10 @@ func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.R
 		return
 	}
 
-	// Update the docs table to change the LatestRevision
+	// Update the docs table to change the LatestRevision. The return value includes the revision ID for the new revision.
 	updateDocReq := (&dynamodb.UpdateItemInput{}).
 		SetTableName(ds.docTable).
-		SetReturnValues("UPDATED_OLD").
+		SetReturnValues("UPDATED_NEW").
 		SetKey(docKeyAv)
 
 	updateDocReq.ExpressionAttributeNames = expr.Names()
@@ -191,15 +204,15 @@ func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.R
 	}
 
 	// Determine the previous revision of the doc
-	var previousRevision string
+	var revId int
 	if len(resp.Attributes) > 0 {
-		oldValues := struct{ LatestRevision string }{}
-		err = dynamodbattribute.UnmarshalMap(resp.Attributes, &oldValues)
+		updatedValues := struct{ LatestRevision int }{}
+		err = dynamodbattribute.UnmarshalMap(resp.Attributes, &updatedValues)
 		if err != nil {
 			return
 		}
 
-		previousRevision = oldValues.LatestRevision
+		revId = updatedValues.LatestRevision
 	}
 
 	// Create a new version of the doc
@@ -210,12 +223,11 @@ func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.R
 	}
 
 	rev = &AwsRevision{
-		DocId:            docId,
-		Id:               revId,
-		PreviousRevision: previousRevision,
-		Timestamp:        timestamp,
-		Body:             b,
-		reader:           bytes.NewReader(b),
+		DocId:     docId,
+		Id:        revId,
+		Timestamp: timestamp,
+		Body:      b,
+		reader:    bytes.NewReader(b),
 	}
 
 	revAv, err := dynamodbattribute.MarshalMap(rev)
@@ -237,11 +249,11 @@ func (ds *AwsDocStore) ListDocs(token string) (page docstore.DocPage, err error)
 		SetTableName(ds.docTable)
 
 	/*
-	// If there is a token it will be the last evaluated key
-	if token != "" {
-		
-	}
-*/
+		// If there is a token it will be the last evaluated key
+		if token != "" {
+
+		}
+	*/
 	resp, err := ds.ddb.Scan(scanInput)
 	if err != nil {
 		return
@@ -256,5 +268,5 @@ func (ds *AwsDocStore) ListDocs(token string) (page docstore.DocPage, err error)
 
 	page.Docs = docs
 	return
-	
+
 }
