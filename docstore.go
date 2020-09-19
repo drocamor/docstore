@@ -1,8 +1,14 @@
 package docstore
 
 import (
+	"fmt"
 	"io"
+	"regexp"
 	"time"
+)
+
+var (
+	validDocRegex = regexp.MustCompile(`^[a-z0-9_-]*$`)
 )
 
 type Doc struct {
@@ -39,4 +45,13 @@ type DocStore interface {
 	PutRevision(docId string, body io.Reader) (rev Revision, err error) // Put a new revision of a document. It will make a new doc if the DocId doesn't exist.
 	ListDocs(token string) (page DocPage, err error)                    // List all the docs
 	ListRevisions(docId string, token string) (RevisionPage, error)     // List all the revisions for a doc
+}
+
+// ValidateDocId returns an error if the docId doesn't match the validDocRegex
+func ValidateDocId(docId string) error {
+	if validDocRegex.Match([]byte(docId)) {
+		return nil
+	}
+
+	return fmt.Errorf("Illegal characters in docId")
 }

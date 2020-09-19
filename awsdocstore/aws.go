@@ -157,6 +157,13 @@ func (ds *AwsDocStore) GetRevision(docId string, revisionId int) (rev docstore.R
 
 func (ds *AwsDocStore) PutRevision(docId string, body io.Reader) (rev docstore.Revision, err error) {
 
+	// Make sure that the docId meets the requirements
+	err = docstore.ValidateDocId(docId)
+
+	if err != nil {
+		return
+	}
+
 	// Create a new revision ID
 	timestamp := time.Now()
 
