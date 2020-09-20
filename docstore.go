@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	validDocRegex = regexp.MustCompile(`^[a-z0-9_-]*$`)
+	validDocRegex = regexp.MustCompile(`^[\.a-z0-9_-]*$`)
 )
 
 type Doc struct {

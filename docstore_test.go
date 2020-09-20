@@ -11,6 +11,7 @@ func TestValidateDocId(t *testing.T) {
 		"123foo",
 		"1-2-bod",
 		"foo_bar",
+		"foo.bar",
 	}
 
 	badIds := []string{
